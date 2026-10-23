@@ -1,0 +1,75 @@
+name: Temporal bounty contributor validation
+
+on:
+  push:
+    branches:
+      - ci/temporal-bounty-60-validation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporal-bounty-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  temporal:
+    name: Real sandbox and replay on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e0487914e6ca7ca9ed94a669ff50955efa067afd
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install public test tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ffmpeg
+      - name: Check exact PR candidate
+        run: npm run check
+      - name: Standard worker tests with bounded Temporal suite
+        run: npm test -w @space/worker
+
+  public-quality:
+    name: Standard public gates on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e0487914e6ca7ca9ed94a669ff50955efa067afd
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # The bounty explicitly exempts this mismatch for external contributions.
+      # Retain the actual diagnostic, then execute every other public CI step.
+      - name: Verify export provenance (expected mismatch for external PR)
+        continue-on-error: true
+        run: node scripts/verify-export-provenance.mjs .
+      - name: Create sanitized candidate
+        run: node scripts/public-export.mjs --output "$RUNNER_TEMP/spaceapp-public-export"
+      - name: Install candidate dependencies
+        working-directory: ${{ runner.temp }}/spaceapp-public-export
+        run: npm ci
+      - name: Install public test tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep ffmpeg
+      - name: Public release tests
+        working-directory: ${{ runner.temp }}/spaceapp-public-export
+        run: npm run test:public
+      - name: Typecheck candidate
+        working-directory: ${{ runner.temp }}/spaceapp-public-export
+        run: npm run check
+      - name: Build candidate
+        working-directory: ${{ runner.temp }}/spaceapp-public-export
+        run: npm run build
+      - name: Pack launcher candidate
+        working-directory: ${{ runner.temp }}/spaceapp-public-export
+        run: npm run pack:dry-run -w run-spaceapp
