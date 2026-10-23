@@ -23,6 +23,7 @@ function syntheticHistory(history: unknown) {
   return JSON.stringify(history, (key, value) => key === "stackTrace" ? "" : value, 2) + "\n";
 }
 const manifest: Array<{ file: string; workflowType: string; workflowId: string; sha256: string; branch?: string }> = [];
+const pendingHistories: Array<{ name: string; content: string }> = [];
 const sandbox = await Sandbox.create();
 try {
   async function record(file: string, workflowType: string, input: unknown, activities: StubActivities,
@@ -37,7 +38,7 @@ try {
       assert(history.events && history.events.length > 0);
       const content = syntheticHistory(history);
       const name = `${file}.json`;
-      await writeFile(resolve(destination, name), content, { flag: values.force ? "w" : "wx" });
+      pendingHistories.push({ name, content });
       manifest.push({ file: name, workflowType, workflowId, sha256: createHash("sha256").update(content).digest("hex"),
         ...(options.legacy ? { branch: "pre-patch" } : {}) });
     }, { ...options, taskQueue: options.taskQueue ?? `history-queue:${file}` });
@@ -88,6 +89,9 @@ try {
   const workerPackage = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const metadata = { sdkVersion: workerPackage.devDependencies["@temporalio/testing"],
     ...(values["patch-id"] ? { patchId: values["patch-id"] } : {}), histories: manifest };
+  for (const { name, content } of pendingHistories) {
+    await writeFile(resolve(destination, name), content, { flag: values.force ? "w" : "wx" });
+  }
   await writeFile(resolve(destination, "manifest.json"), JSON.stringify(metadata, null, 2) + "\n", { flag: values.force ? "w" : "wx" });
   console.log(`Recorded ${manifest.length} synthetic histories in ${destination}. Review their diff; normal tests only read them.`);
 } finally {

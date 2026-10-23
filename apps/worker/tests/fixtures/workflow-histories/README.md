@@ -34,6 +34,8 @@ To inspect a fresh recording without replacing the compatibility corpus:
 npm run temporal:record-histories -w @space/worker -- --output /tmp/space-histories-review
 ```
 
+All workflow recordings finish before any history files are written. A workflow
+failure leaves existing histories unchanged and creates no partial corpus.
 The recorder refuses to overwrite JSON by default. Re-recording committed
 histories is allowed **only together with a reviewed `patched()` workflow change**.
 Preserve histories for both sides of the patch; add new cases and manifest entries
